@@ -1,16 +1,78 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from io import StringIO
 from sklearn.ensemble import IsolationForest
 
 # Page Configuration
 st.set_page_config(
     page_title="AquaGrid AI — SCADA Interactive Control Engine",
     page_icon="💧",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# 🎨 CUSTOM CSS FOR DARK/CYAN LANDING PAGE THEME
+st.markdown("""
+    <style>
+    /* Dark Theme Backgrounds */
+    .stApp {
+        background-color: #0b0f19;
+        color: #e0e6ed;
+    }
+    
+    /* Sidebar Dark Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #111827;
+        border-right: 1px solid #1f2937;
+    }
+    
+    /* Neon Cyan Accent Headers */
+    h1, h2, h3, h4 {
+        color: #00f2fe !important;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Card/Metric Boxes Styling */
+    [data-testid="stMetricValue"] {
+        color: #38bdf8 !important;
+        font-weight: 700;
+    }
+    
+    [data-testid="stMetric"] {
+        background-color: #161e2e;
+        border: 1px solid #1e293b;
+        padding: 15px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    
+    /* Button Styling */
+    .stButton>button {
+        background: linear-gradient(90deg, #00c6ff 0%, #0072ff 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        padding: 0.6rem 1.2rem;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        box-shadow: 0 0 15px rgba(0, 242, 254, 0.6);
+        transform: translateY(-2px);
+    }
+    
+    /* Dataframe Dark Theme Override */
+    .stDataFrame {
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("💧 AquaGrid AI — Predictive Municipal SCADA Platform")
+st.markdown("##### *AI-Driven Non-Revenue Water (NRW) Reduction & Live Telemetry Simulation*")
 st.markdown("---")
 
 # Load Dataset
@@ -33,7 +95,6 @@ def load_data():
 2024-01-01 00:50:00,S008,3.76,162.1,18.1,0,0
 2024-01-01 00:55:00,S009,2.94,74.8,10.2,0,0
 2024-01-01 01:00:00,S008,2.51,172.3,20.6,0,0"""
-        from io import StringIO
         df = pd.read_csv(StringIO(data))
     return df
 
