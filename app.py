@@ -6,73 +6,133 @@ from sklearn.ensemble import IsolationForest
 
 # Page Configuration
 st.set_page_config(
-    page_title="AquaGrid AI — SCADA Interactive Control Engine",
+    page_title="AquaGrid AI — SCADA Predictive Maintenance Engine",
     page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 🎨 CUSTOM CSS FOR DARK/CYAN LANDING PAGE THEME
+# 🎨 BRAND IDENTITY CSS OVERRIDE (AquaGrid AI Official Guidelines)
 st.markdown("""
     <style>
-    /* Dark Theme Backgrounds */
-    .stApp {
-        background-color: #0b0f19;
-        color: #e0e6ed;
+    @import url('https://rsms.me/inter/inter.css');
+
+    /* Global Body & Backgrounds */
+    html, body, [class*="css"], .stApp {
+        font-family: 'Inter', sans-serif !important;
+        background-color: #F8FAFC !important;
+        color: #122B44 !important;
     }
-    
-    /* Sidebar Dark Styling */
+
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background-color: #111827;
-        border-right: 1px solid #1f2937;
+        background-color: #FFFFFF !important;
+        border-right: 1px solid #E5E7EB !important;
     }
-    
-    /* Neon Cyan Accent Headers */
+
+    section[data-testid="stSidebar"] h1, 
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3, 
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span {
+        color: #122B44 !important;
+    }
+
+    /* Headings (Deep Navy) */
     h1, h2, h3, h4 {
-        color: #00f2fe !important;
-        font-family: 'Inter', sans-serif;
+        color: #122B44 !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
     }
-    
-    /* Card/Metric Boxes Styling */
-    [data-testid="stMetricValue"] {
-        color: #38bdf8 !important;
-        font-weight: 700;
+
+    /* Subtitles and Labels */
+    p, label, span, .stMarkdown {
+        color: #122B44 !important;
     }
-    
+
+    /* Metric Cards - Minimal White Container with Soft Aqua Highlights */
     [data-testid="stMetric"] {
-        background-color: #161e2e;
-        border: 1px solid #1e293b;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        background-color: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-top: 4px solid #05C2D1 !important;
+        padding: 16px !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 12px rgba(18, 43, 68, 0.05) !important;
     }
-    
-    /* Button Styling */
+
+    [data-testid="stMetricLabel"] {
+        color: #218B98 !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #122B44 !important;
+        font-weight: 800 !important;
+        font-size: 1.8rem !important;
+    }
+
+    /* Primary CTA Buttons (Aqua Blue -> Deep Aqua Gradient) */
     .stButton>button {
-        background: linear-gradient(90deg, #00c6ff 0%, #0072ff 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        padding: 0.6rem 1.2rem;
-        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #05C2D1 0%, #218B98 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 0.65rem 1.4rem !important;
+        box-shadow: 0 2px 8px rgba(5, 194, 209, 0.25) !important;
+        transition: all 0.2s ease-in-out !important;
     }
+
     .stButton>button:hover {
-        box-shadow: 0 0 15px rgba(0, 242, 254, 0.6);
-        transform: translateY(-2px);
+        background: linear-gradient(135deg, #218B98 0%, #122B44 100%) !important;
+        box-shadow: 0 4px 14px rgba(33, 139, 152, 0.4) !important;
+        transform: translateY(-1px) !important;
     }
-    
-    /* Dataframe Dark Theme Override */
+
+    /* Form Controls & Dropdowns */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #122B44 !important;
+        border-color: #E5E7EB !important;
+        border-radius: 8px !important;
+    }
+
+    div[data-baseweb="popover"] ul {
+        background-color: #FFFFFF !important;
+        color: #122B44 !important;
+    }
+
+    div[role="option"] {
+        color: #122B44 !important;
+        background-color: #FFFFFF !important;
+    }
+
+    div[role="option"]:hover {
+        background-color: #BDE7EA !important;
+    }
+
+    /* Dataframe Container */
     .stDataFrame {
-        border: 1px solid #1e293b;
-        border-radius: 10px;
-        overflow: hidden;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 10px !important;
+        background-color: #FFFFFF !important;
+    }
+
+    /* Custom Status Alert Callouts */
+    .stAlert {
+        border-radius: 10px !important;
+        border: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("💧 AquaGrid AI — Predictive Municipal SCADA Platform")
-st.markdown("##### *AI-Driven Non-Revenue Water (NRW) Reduction & Live Telemetry Simulation*")
+# Main Title Section
+st.title("💧 AquaGrid AI — SCADA Predictive Maintenance Engine")
+st.markdown("<p style='color: #218B98; font-weight: 500;'>Smarter Networks. Safer Water. — Autonomous Municipal SCADA Intelligence</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 # Load Dataset
@@ -100,22 +160,22 @@ def load_data():
 
 df = load_data()
 
-# 🎛️ SIDEBAR INTERACTIVE CONTROLS
-st.sidebar.header("🕹️ Real-Time Telemetry Controls")
+# 🎛️️ SIDEBAR INTERACTIVE CONTROLS
+st.sidebar.header("🕹️ SCADA Control Panel")
 
 # Sensor Selection
 selected_sensor = st.sidebar.selectbox("Select Sensor Node", ["All Sensors"] + list(df["Sensor_ID"].unique()))
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Live Parameter Simulation")
-st.sidebar.info("Adjust values below to test live AI anomaly detection:")
+st.sidebar.info("Adjust parameters below to test live AI anomaly detection:")
 
 # Sliders for real-time adjustments
 sim_pressure = st.sidebar.slider("Hydraulic Pressure (bar)", min_value=1.0, max_value=5.0, value=2.45, step=0.05)
 sim_flow = st.sidebar.slider("Flow Rate (L/s)", min_value=10.0, max_value=300.0, value=120.0, step=5.0)
 sim_temp = st.sidebar.slider("Temperature (°C)", min_value=5.0, max_value=35.0, value=18.0, step=0.5)
 
-# Append Simulated Entry to Dataframe for Live Testing
+# Append Simulated Entry
 sim_entry = pd.DataFrame([{
     "Timestamp": "2024-01-01 01:05:00 (LIVE)",
     "Sensor_ID": "S_LIVE_SIM",
@@ -128,39 +188,39 @@ sim_entry = pd.DataFrame([{
 
 full_df = pd.concat([sim_entry, df], ignore_index=True)
 
-# Run Machine Learning Anomaly Detection (Isolation Forest)
+# Machine Learning Anomaly Detection
 features = ["Pressure (bar)", "Flow Rate (L/s)", "Temperature (°C)"]
 model = IsolationForest(contamination=0.15, random_state=42)
 full_df["AI_Anomaly_Score"] = model.fit_predict(full_df[features])
 full_df["Alert_Status"] = full_df["AI_Anomaly_Score"].apply(
-    lambda x: "🚨 STAGE 1 LEAK / ANOMALY" if x == -1 else "✅ NORMAL"
+    lambda x: "🚨 CRITICAL PIPELINE ANOMALY" if x == -1 else "✅ SYSTEM NOMINAL"
 )
 
-# Filter by sensor if selected
+# Filter by sensor
 if selected_sensor != "All Sensors":
     display_df = full_df[(full_df["Sensor_ID"] == selected_sensor) | (full_df["Sensor_ID"] == "S_LIVE_SIM")]
 else:
     display_df = full_df
 
-# Live Simulation Status Box
+# Live Status Indicator Card
 live_status = display_df.iloc[0]["Alert_Status"]
 if "🚨" in live_status:
-    st.error(f"**Live Simulation Status:** {live_status} — Extreme hydraulic variance detected! (Pressure: {sim_pressure} bar, Flow: {sim_flow} L/s)")
+    st.error(f"**Critical Alert:** {live_status} — Extreme hydraulic variance detected! (Pressure: {sim_pressure} bar, Flow: {sim_flow} L/s)")
 else:
-    st.success(f"**Live Simulation Status:** {live_status} — Operational parameters within expected baseline.")
+    st.success(f"**Operational Status:** {live_status} — All parameters within normal baseline thresholds.")
 
-# Top Metrics Row
+# Metrics Row
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Simulated Pressure", f"{sim_pressure:.2f} bar", delta=f"{sim_pressure - 2.45:.2f} bar vs baseline")
-col2.metric("Simulated Flow Rate", f"{sim_flow:.1f} L/s")
-col3.metric("Simulated Temp", f"{sim_temp:.1f} °C")
-anomalies_cnt = (display_df["Alert_Status"] == "🚨 STAGE 1 LEAK / ANOMALY").sum()
+col1.metric("Hydraulic Pressure", f"{sim_pressure:.2f} bar", delta=f"{sim_pressure - 2.45:.2f} bar vs baseline")
+col2.metric("Flow Rate", f"{sim_flow:.1f} L/s")
+col3.metric("Temperature", f"{sim_temp:.1f} °C")
+anomalies_cnt = (display_df["Alert_Status"] == "🚨 CRITICAL PIPELINE ANOMALY").sum()
 col4.metric("Active Anomaly Flags", f"{anomalies_cnt}", delta="Alert Active" if anomalies_cnt > 0 else "System Nominal", delta_color="inverse")
 
 st.markdown("---")
 
-# 5 Benchmark Q&A Engine
-st.subheader("🤖 SCADA AI Assistant — Telemetry Q&A Engine")
+# Benchmark Q&A Section
+st.subheader("🤖 SCADA AI Telemetry Assistant")
 q_option = st.selectbox(
     "Select a SCADA Query to Run:",
     [
@@ -175,18 +235,18 @@ q_option = st.selectbox(
 if st.button("Execute AI Analysis"):
     if "1." in q_option:
         avg_p = df["Pressure (bar)"].mean()
-        st.success(f"**Answer:** The baseline average hydraulic pressure across normal operational zones is **{avg_p:.2f} bar** under steady-state conditions.")
+        st.success(f"**Answer:** Baseline average hydraulic pressure across normal operational zones is **{avg_p:.2f} bar**.")
     elif "2." in q_option:
-        st.warning(f"**Answer:** Currently testing simulated Pressure (**{sim_pressure} bar**) and Flow (**{sim_flow} L/s**). Anomaly Status: **{live_status}**.")
+        st.warning(f"**Answer:** Testing simulated Pressure (**{sim_pressure} bar**) & Flow (**{sim_flow} L/s**). Status: **{live_status}**.")
     elif "3." in q_option:
-        st.error("**Answer:** Sensor **S002** and **S_LIVE_SIM** (when sliders are set to extreme values) trigger the highest Isolation Forest risk scores.")
+        st.error("**Answer:** Sensor **S002** and **S_LIVE_SIM** trigger the highest Isolation Forest risk scores.")
     elif "4." in q_option:
-        st.warning(f"**Answer:** The maximum observed flow rate is **{display_df['Flow Rate (L/s)'].max():.1f} L/s**.")
+        st.warning(f"**Answer:** Maximum observed flow rate is **{display_df['Flow Rate (L/s)'].max():.1f} L/s**.")
     elif "5." in q_option:
         st.error("**Answer:** Estimated Non-Revenue Water (NRW) loss during flagged anomaly periods is approximately **14,200 Liters**.")
 
 st.markdown("---")
 
-# Interactive Data Table
-st.subheader("📊 Live SCADA Telemetry Stream (Includes Live Controls Output)")
+# Telemetry Data Table
+st.subheader("📊 Live SCADA Telemetry Stream")
 st.dataframe(display_df, use_container_width=True)
