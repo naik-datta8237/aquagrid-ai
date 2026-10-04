@@ -1,6 +1,9 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import IsolationForest
 
 # ---------------------------------------------------------
 # PAGE CONFIGURATION
@@ -13,36 +16,32 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# BRAND CUSTOM CSS (NAVY, AQUA BLUE, CLEAN WHITE)
+# BRAND CUSTOM CSS
 # ---------------------------------------------------------
 st.markdown("""
 <style>
-    /* Main Canvas Background */
     .stApp {
         background-color: #F8FAFC;
         color: #122B44;
         font-family: 'Inter', sans-serif;
     }
-    
-    /* Headings */
+
     h1, h2, h3, h4 {
         color: #122B44 !important;
         font-weight: 700;
     }
-    
-    /* Sidebar Styling */
+
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF;
         border-right: 1px solid rgba(18, 43, 68, 0.08);
     }
-    
-    /* Metric Cards */
+
     [data-testid="stMetricValue"] {
         font-size: 28px;
         font-weight: 700;
         color: #122B44;
     }
-    
+
     [data-testid="stMetricLabel"] {
         color: #218B98;
         font-weight: 600;
@@ -50,7 +49,6 @@ st.markdown("""
         text-transform: uppercase;
     }
 
-    /* Buttons */
     .stButton>button {
         background-color: #05C2D1;
         color: #FFFFFF;
@@ -60,6 +58,7 @@ st.markdown("""
         padding: 10px 24px;
         transition: all 0.2s ease;
     }
+
     .stButton>button:hover {
         background-color: #218B98;
         color: #FFFFFF;
@@ -68,162 +67,716 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# ---------------------------------------------------------
+# DATASET + MODEL
+# ---------------------------------------------------------
+DATASET_PATH = Path(__file__).parent / "telemetry_dataset.csv"
+
+FEATURES = [
+    "Pressure (bar)",
+    "Flow Rate (L/s)",
+    "Temperature (°C)"
+]
+
+REQUIRED_COLUMNS = [
+    "Timestamp",
+    "Sensor_ID",
+    "Pressure (bar)",
+    "Flow Rate (L/s)",
+    "Temperature (°C)",
+    "Leak Status",
+    "Burst Status"
+]
+
+
+@st.cache_resource
+def load_and_train_model():
+
+    # Load actual SCADA dataset
+    df = pd.read_csv(DATASET_PATH)
+
+    # Validate dataset structure
+    missing_columns = [
+        col for col in REQUIRED_COLUMNS
+        if col not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"Dataset is missing required columns: {missing_columns}"
+        )
+
+    # Convert model features to numeric
+    for column in FEATURES:
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
+
+    # Remove rows with missing model inputs
+    df = df.dropna(subset=FEATURES).copy()
+
+    # -----------------------------------------------------
+    # FEATURE MATRIX
+    # Only physical telemetry variables are used.
+    # Sensor_ID is an identifier, not an ML feature.
+    # Leak/Burst status are evaluation labels.
+    # -----------------------------------------------------
+    X = df[FEATURES]
+
+    # Standardize telemetry
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # -----------------------------------------------------
+    # ACTUAL ISOLATION FOREST MODEL
+    # -----------------------------------------------------
+    model = IsolationForest(
+        n_estimators=200,
+        contamination="auto",
+        random_state=42
+    )
+
+    model.fit(X_scaled)
+
+    # Training decision scores
+    training_scores = model.decision_function(X_scaled)
+
+    # Sort scores for relative risk calculation
+    sorted_scores = np.sort(training_scores)
+
+    # Model predictions
+    df["AI Prediction"] = model.predict(X_scaled)
+
+    # -1 = anomaly
+    #  1 = normal
+    df["AI Anomaly"] = df["AI Prediction"] == -1
+
+    return df, scaler, model, sorted_scores
+
+
+# ---------------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------------
+try:
+    df, scaler, model, sorted_scores = load_and_train_model()
+
+except Exception as e:
+    st.error(f"Unable to load the SCADA dataset or train the AI model: {e}")
+    st.stop()
+
+
+# ---------------------------------------------------------
+# HELPER FUNCTIONS
+# ---------------------------------------------------------
+def calculate_risk_score(decision_score):
+    """
+    Converts the Isolation Forest decision score into a
+    relative 0–100 anomaly risk score.
+
+    Lower Isolation Forest scores indicate more anomalous
+    observations.
+
+    This is NOT a probability.
+    """
+
+    percentile = (
+        np.searchsorted(
+            sorted_scores,
+            decision_score,
+            side="right"
+        ) / len(sorted_scores)
+    )
+
+    risk = (1 - percentile) * 100
+
+    return float(np.clip(risk, 0, 100))
+
+
+def classify_risk(risk_score):
+
+    if risk_score >= 90:
+        return (
+            "🔴 CRITICAL ANOMALY DETECTED",
+            "critical"
+        )
+
+    elif risk_score >= 70:
+        return (
+            "🟠 WARNING — Operational Variance Detected",
+            "warning"
+        )
+
+    else:
+        return (
+            "🟢 SYSTEM NOMINAL",
+            "normal"
+        )
+
+
+def safe_numeric(series):
+    return pd.to_numeric(
+        series,
+        errors="coerce"
+    )
+
+
 # ---------------------------------------------------------
 # HEADER SECTION
 # ---------------------------------------------------------
-st.title("💧 AquaGrid AI — SCADA Predictive Maintenance Engine")
-st.caption("Smarter Networks. Safer Water. — Autonomous Municipal SCADA Intelligence")
+st.title(
+    "💧 AquaGrid AI — SCADA Predictive Maintenance Engine"
+)
+
+st.caption(
+    "Smarter Networks. Safer Water. — "
+    "AI-Assisted Municipal SCADA Intelligence"
+)
 
 st.markdown("---")
+
 
 # ---------------------------------------------------------
 # SIDEBAR CONTROLS
 # ---------------------------------------------------------
 st.sidebar.markdown("### 👤 SCADA Control Panel")
-sensor_node = st.sidebar.selectbox("Select Sensor Node", ["All Sensors", "Node-Zone-01", "Node-Zone-04B", "Node-Zone-09"])
+
+# Use actual Sensor IDs from the dataset
+sensor_options = ["All Sensors"] + sorted(
+    df["Sensor_ID"].astype(str).unique().tolist()
+)
+
+sensor_node = st.sidebar.selectbox(
+    "Select Sensor Node",
+    sensor_options
+)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚙️ Live Parameter Simulation")
-st.sidebar.info("Adjust parameters below to test live AI anomaly detection:")
 
-# Live Parameter Sliders
-pressure = st.sidebar.slider("Hydraulic Pressure (bar)", min_value=0.0, max_value=6.0, value=2.45, step=0.05)
-flow_rate = st.sidebar.slider("Flow Rate (L/s)", min_value=0.0, max_value=250.0, value=120.0, step=1.0)
-temperature = st.sidebar.slider("Temperature (°C)", min_value=0.0, max_value=40.0, value=18.0, step=0.5)
-acoustic_noise = st.sidebar.slider("Acoustic Noise (dB)", min_value=20.0, max_value=110.0, value=42.0, step=1.0)
+st.sidebar.markdown(
+    "### ⚙️ Live Parameter Simulation"
+)
+
+st.sidebar.info(
+    "Adjust the three SCADA telemetry parameters "
+    "used by the current Isolation Forest MVP."
+)
+
 
 # ---------------------------------------------------------
-# AI ISOLATION FOREST ANOMALY LOGIC (SIMULATED MODEL)
+# DATASET BASELINES
 # ---------------------------------------------------------
-# Baseline defaults: Pressure ~ 2.45 bar, Flow ~ 120 L/s, Temp ~ 18 C, Acoustic ~ 40 dB
-pressure_dev = abs(pressure - 2.45) / 2.45
-flow_dev = abs(flow_rate - 120.0) / 120.0
-temp_dev = abs(temperature - 18.0) / 18.0
-acoustic_dev = max(0.0, (acoustic_noise - 45.0) / 45.0)
+default_pressure = float(
+    df["Pressure (bar)"].median()
+)
 
-# Calculate composite Isolation Forest anomaly probability score
-composite_score = (pressure_dev * 0.35) + (flow_dev * 0.25) + (temp_dev * 0.15) + (acoustic_dev * 0.25)
-anomaly_prob = min(0.998, max(0.021, composite_score))
+default_flow = float(
+    df["Flow Rate (L/s)"].median()
+)
 
-# Status Determination
-if anomaly_prob > 0.60:
-    op_status = "⚠️ CRITICAL ANOMALY DETECTED — Pressure or acoustic threshold breached."
-    status_box_type = st.error
-    anomaly_flag_count = int(150 + (anomaly_prob * 300))
-elif anomaly_prob > 0.30:
-    op_status = "⚡ WARNING — Mild operational variance detected."
-    status_box_type = st.warning
-    anomaly_flag_count = int(50 + (anomaly_prob * 100))
+default_temperature = float(
+    df["Temperature (°C)"].median()
+)
+
+
+# ---------------------------------------------------------
+# LIVE PARAMETER SLIDERS
+# ---------------------------------------------------------
+pressure = st.sidebar.slider(
+    "Hydraulic Pressure (bar)",
+    min_value=0.0,
+    max_value=6.0,
+    value=round(default_pressure, 2),
+    step=0.05
+)
+
+flow_rate = st.sidebar.slider(
+    "Flow Rate (L/s)",
+    min_value=0.0,
+    max_value=250.0,
+    value=round(default_flow, 1),
+    step=1.0
+)
+
+temperature = st.sidebar.slider(
+    "Temperature (°C)",
+    min_value=0.0,
+    max_value=40.0,
+    value=round(default_temperature, 1),
+    step=0.5
+)
+
+
+# ---------------------------------------------------------
+# CURRENT TELEMETRY
+# ---------------------------------------------------------
+current_data = pd.DataFrame({
+    "Pressure (bar)": [pressure],
+    "Flow Rate (L/s)": [flow_rate],
+    "Temperature (°C)": [temperature]
+})
+
+
+# ---------------------------------------------------------
+# ISOLATION FOREST INFERENCE
+# ---------------------------------------------------------
+current_scaled = scaler.transform(
+    current_data[FEATURES]
+)
+
+prediction = model.predict(current_scaled)[0]
+
+decision_score = model.decision_function(
+    current_scaled
+)[0]
+
+anomaly_risk = calculate_risk_score(
+    decision_score
+)
+
+op_status, status_type = classify_risk(
+    anomaly_risk
+)
+
+
+# ---------------------------------------------------------
+# OPERATIONAL STATUS
+# ---------------------------------------------------------
+if status_type == "critical":
+
+    st.error(
+        f"**Operational Status:** {op_status}"
+    )
+
+elif status_type == "warning":
+
+    st.warning(
+        f"**Operational Status:** {op_status}"
+    )
+
 else:
-    op_status = "✅ SYSTEM NOMINAL — All parameters within normal baseline thresholds."
-    status_box_type = st.success
-    anomaly_flag_count = 150
 
-# Display Operational Banner
-status_box_type(f"**Operational Status:** {op_status}")
+    st.success(
+        f"**Operational Status:** {op_status}"
+    )
+
 
 # ---------------------------------------------------------
-# MAIN METRIC CARDS (INCLUDES ACOUSTIC & ANOMALY PROBABILITY)
+# MAIN METRIC CARDS
 # ---------------------------------------------------------
 col1, col2, col3, col4, col5 = st.columns(5)
 
+
+# Dataset baselines
+baseline_pressure = df["Pressure (bar)"].median()
+baseline_flow = df["Flow Rate (L/s)"].median()
+baseline_temperature = df["Temperature (°C)"].median()
+
+
 with col1:
-    pressure_diff = pressure - 2.45
+
+    pressure_diff = (
+        pressure - baseline_pressure
+    )
+
     st.metric(
         label="Hydraulic Pressure",
         value=f"{pressure:.2f} bar",
-        delta=f"{pressure_diff:+.2f} bar vs baseline"
+        delta=(
+            f"{pressure_diff:+.2f} bar vs dataset baseline"
+        )
     )
+
 
 with col2:
+
+    flow_diff = (
+        flow_rate - baseline_flow
+    )
+
     st.metric(
         label="Flow Rate",
-        value=f"{flow_rate:.1f} L/s"
+        value=f"{flow_rate:.1f} L/s",
+        delta=f"{flow_diff:+.1f} L/s"
     )
+
 
 with col3:
+
+    temperature_diff = (
+        temperature - baseline_temperature
+    )
+
     st.metric(
         label="Temperature",
-        value=f"{temperature:.1f} °C"
+        value=f"{temperature:.1f} °C",
+        delta=f"{temperature_diff:+.1f} °C"
     )
+
 
 with col4:
+
     st.metric(
-        label="Acoustic Noise",
-        value=f"{acoustic_noise:.0f} dB",
-        delta="High Noise" if acoustic_noise > 65 else "Normal",
-        delta_color="inverse" if acoustic_noise > 65 else "normal"
+        label="AI Prediction",
+        value=(
+            "ANOMALY"
+            if prediction == -1
+            else "NORMAL"
+        ),
+        delta=(
+            "Isolation Forest"
+        )
     )
+
 
 with col5:
+
     st.metric(
-        label="AI Anomaly Prob.",
-        value=f"{anomaly_prob * 100:.1f}%",
-        delta="ALERT ACTIVE" if anomaly_prob > 0.30 else "NOMINAL",
-        delta_color="inverse" if anomaly_prob > 0.30 else "normal"
+        label="Anomaly Risk Score",
+        value=f"{anomaly_risk:.1f}/100",
+        delta=(
+            "HIGH RISK"
+            if anomaly_risk >= 70
+            else "NOMINAL"
+        ),
+        delta_color=(
+            "inverse"
+            if anomaly_risk >= 70
+            else "normal"
+        )
     )
 
+
 st.markdown("---")
+
+
+# ---------------------------------------------------------
+# CURRENT TELEMETRY DETAILS
+# ---------------------------------------------------------
+st.subheader("📡 Current SCADA Telemetry")
+
+telemetry_col1, telemetry_col2 = st.columns(2)
+
+with telemetry_col1:
+
+    st.dataframe(
+        current_data,
+        use_container_width=True,
+        hide_index=True
+    )
+
+with telemetry_col2:
+
+    st.markdown("### 🧠 AI Decision")
+
+    st.write(
+        f"**Isolation Forest Decision Score:** "
+        f"`{decision_score:.4f}`"
+    )
+
+    st.write(
+        f"**Relative Anomaly Risk:** "
+        f"`{anomaly_risk:.1f}/100`"
+    )
+
+    if prediction == -1:
+
+        st.warning(
+            "The current telemetry pattern is "
+            "classified as an anomaly by the Isolation Forest model."
+        )
+
+    else:
+
+        st.success(
+            "The current telemetry pattern is "
+            "classified as normal by the Isolation Forest model."
+        )
+
+
+st.markdown("---")
+
+
+# ---------------------------------------------------------
+# DATASET INFORMATION
+# ---------------------------------------------------------
+with st.expander("📊 SCADA Dataset & Model Information"):
+
+    info_col1, info_col2, info_col3 = st.columns(3)
+
+    with info_col1:
+        st.metric(
+            "Telemetry Records",
+            f"{len(df):,}"
+        )
+
+    with info_col2:
+        st.metric(
+            "Sensor Nodes",
+            f"{df['Sensor_ID'].nunique():,}"
+        )
+
+    with info_col3:
+        st.metric(
+            "AI Features",
+            "3"
+        )
+
+    st.markdown(
+        """
+        **Current AI model inputs:**
+        - Pressure (bar)
+        - Flow Rate (L/s)
+        - Temperature (°C)
+
+        **Evaluation/context fields:**
+        - Leak Status
+        - Burst Status
+
+        `Sensor_ID` is treated as an identifier and is not used as
+        an ML feature.
+
+        The current MVP uses an **Isolation Forest** trained on the
+        available synthetic SCADA telemetry dataset.
+        """
+    )
+
 
 # ---------------------------------------------------------
 # INTERACTIVE SCADA AI TELEMETRY ASSISTANT
 # ---------------------------------------------------------
-st.subheader("🤖 SCADA AI Telemetry Assistant")
+st.subheader(
+    "🤖 SCADA AI Telemetry Assistant"
+)
 
 query_option = st.selectbox(
     "Select a SCADA Query to Run:",
     [
         "1. What is the baseline average hydraulic pressure across operational zones?",
-        "2. Is there an active pressure or acoustic anomaly detected in the network?",
+        "2. Is there an active telemetry anomaly detected in the network?",
         "3. What is the estimated water loss rate and financial risk (NRW)?",
-        "4. Which pump/valve asset requires immediate preventive maintenance?",
+        "4. Which sensor requires immediate preventive maintenance?",
         "5. Generate an automated dispatch ticket for field engineers."
     ]
 )
 
+
+# ---------------------------------------------------------
+# EXECUTE QUERY
+# ---------------------------------------------------------
 if st.button("Execute AI Analysis"):
-    st.markdown("### 📋 AI Diagnostic Output")
-    
+
+    st.markdown(
+        "### 📋 AI Diagnostic Output"
+    )
+
+    # -----------------------------------------------------
+    # QUERY 1
+    # -----------------------------------------------------
     if "1." in query_option:
+
         st.write(
-            f"**System Baseline Report:** Nominal hydraulic pressure across all operational zones is **2.45 bar**. "
-            f"Current measured pressure is **{pressure:.2f} bar** (Variance: {pressure_diff:+.2f} bar)."
-        )
-        
-    elif "2." in query_option:
-        st.write(
-            f"**Isolation Forest Anomaly Analysis:**\n"
-            f"- **Calculated Anomaly Probability:** `{anomaly_prob * 100:.1f}%`\n"
-            f"- **Acoustic Leak Signature:** `{acoustic_noise:.0f} dB`\n"
-            f"- **Status:** {'CRITICAL SENSOR SPIKE DETECTED' if anomaly_prob > 0.30 else 'No active critical leaks detected.'}"
-        )
-        
-    elif "3." in query_option:
-        estimated_loss_lps = round(anomaly_prob * 18.5, 2)
-        financial_loss = int(estimated_loss_lps * 3000)
-        st.write(
-            f"**Non-Revenue Water (NRW) Impact Analysis:**\n"
-            f"- **Estimated Water Loss:** `{estimated_loss_lps} Liters/sec`\n"
-            f"- **Projected Revenue Loss:** `₹{financial_loss:,} / day`"
-        )
-        
-    elif "4." in query_option:
-        st.write(
-            f"**Predictive Asset Health Score:**\n"
-            f"- **Target Asset:** Pump #PUMP-02 (Zone 04B)\n"
-            f"- **Vibration / Cavitation Risk:** `{acoustic_noise:.0f} dB`\n"
-            f"- **Remaining Useful Life (RUL):** `{'48 Hours' if acoustic_noise > 60 else '320 Hours'}`"
-        )
-        
-    elif "5." in query_option:
-        st.success(
-            f"**AUTOMATED WORK ORDER GENERATED (#WO-8921)**\n\n"
-            f"- **Location:** Zone 04B Junction 12\n"
-            f"- **Trigger:** Anomaly Probability {anomaly_prob * 100:.1f}% | Acoustic Noise {acoustic_noise:.0f} dB\n"
-            f"- **Assigned Team:** Crew B (Field Maintenance)\n"
-            f"- **Recommended Action:** Inspect main valve seal and reduce line pressure transient."
+            f"""
+            **System Baseline Report:**
+
+            Based on the current SCADA dataset, the median
+            hydraulic pressure is **{baseline_pressure:.2f} bar**.
+
+            Current measured pressure is
+            **{pressure:.2f} bar**.
+
+            **Variance:** `{pressure_diff:+.2f} bar`
+            """
         )
 
-# Footer
+        st.info(
+            "The baseline is calculated directly from the "
+            "available SCADA telemetry dataset."
+        )
+
+
+    # -----------------------------------------------------
+    # QUERY 2
+    # -----------------------------------------------------
+    elif "2." in query_option:
+
+        st.write(
+            f"""
+            **Isolation Forest Anomaly Analysis**
+
+            - **AI Prediction:** `{
+                'ANOMALY'
+                if prediction == -1
+                else 'NORMAL'
+            }`
+            - **Anomaly Risk Score:** `{anomaly_risk:.1f}/100`
+            - **Decision Score:** `{decision_score:.4f}`
+            - **Operational Status:** `{op_status}`
+            """
+        )
+
+        if prediction == -1:
+
+            st.error(
+                "The current combination of pressure, flow and "
+                "temperature is outside the model's learned "
+                "normal operating patterns."
+            )
+
+        else:
+
+            st.success(
+                "No Isolation Forest anomaly was detected "
+                "for the current telemetry combination."
+            )
+
+
+    # -----------------------------------------------------
+    # QUERY 3
+    # -----------------------------------------------------
+    elif "3." in query_option:
+
+        # Prototype estimate only
+        estimated_loss_lps = round(
+            anomaly_risk / 100 * 18.5,
+            2
+        )
+
+        financial_loss = int(
+            estimated_loss_lps * 3000
+        )
+
+        st.write(
+            f"""
+            **Non-Revenue Water (NRW) Impact Analysis**
+
+            - **Relative Anomaly Risk:** `{anomaly_risk:.1f}/100`
+            - **Prototype Estimated Water Loss:** `{estimated_loss_lps} L/s`
+            - **Prototype Revenue Impact:** `₹{financial_loss:,} / day`
+            """
+        )
+
+        st.warning(
+            "NRW and financial values are prototype estimates "
+            "for the MVP demonstration. They are not directly "
+            "predicted by the current Isolation Forest model."
+        )
+
+
+    # -----------------------------------------------------
+    # QUERY 4
+    # -----------------------------------------------------
+    elif "4." in query_option:
+
+        selected_sensor = (
+            sensor_node
+            if sensor_node != "All Sensors"
+            else "Current SCADA Pattern"
+        )
+
+        st.write(
+            f"""
+            **Predictive Maintenance Assessment**
+
+            - **Target Sensor:** `{selected_sensor}`
+            - **AI Anomaly Risk:** `{anomaly_risk:.1f}/100`
+            - **AI Classification:** {
+                'ANOMALY'
+                if prediction == -1
+                else 'NORMAL'
+            }
+            """
+        )
+
+        if anomaly_risk >= 90:
+
+            st.error(
+                "Immediate inspection is recommended. "
+                "The current telemetry pattern is highly anomalous."
+            )
+
+        elif anomaly_risk >= 70:
+
+            st.warning(
+                "Preventive inspection is recommended "
+                "because the telemetry pattern shows elevated risk."
+            )
+
+        else:
+
+            st.success(
+                "No immediate preventive maintenance action "
+                "is indicated by the current AI assessment."
+            )
+
+
+    # -----------------------------------------------------
+    # QUERY 5
+    # -----------------------------------------------------
+    elif "5." in query_option:
+
+        if prediction == -1 or anomaly_risk >= 70:
+
+            sensor_label = (
+                sensor_node
+                if sensor_node != "All Sensors"
+                else "Selected SCADA Sensor"
+            )
+
+            work_order_id = (
+                f"WO-{np.random.randint(1000, 9999)}"
+            )
+
+            st.success(
+                f"""
+                **AUTOMATED WORK ORDER GENERATED (#{work_order_id})**
+
+                - **Sensor:** {sensor_label}
+                - **Trigger:** Anomaly Risk {anomaly_risk:.1f}/100
+                - **AI Classification:** ANOMALY
+                - **Priority:** {
+                    'CRITICAL'
+                    if anomaly_risk >= 90
+                    else 'HIGH'
+                }
+                - **Recommended Action:** Inspect the affected
+                  network segment and verify pressure/flow conditions.
+                """
+            )
+
+        else:
+
+            st.info(
+                "No work order generated because the current "
+                "telemetry pattern is within the model's normal range."
+            )
+
+
+# ---------------------------------------------------------
+# MODEL LIMITATION / MVP DISCLAIMER
+# ---------------------------------------------------------
 st.markdown("---")
-st.caption("AquaGrid AI Platform • Connected to SCADA Node Simulator • Streamlit v1.38+")
+
+st.info(
+    """
+    **MVP Model Note:** AquaGrid AI currently demonstrates an
+    Isolation Forest anomaly-detection workflow using synthetic
+    SCADA telemetry. The model uses pressure, flow rate and
+    temperature as inputs. Production deployment would require
+    historical municipal SCADA data, model calibration and
+    operational validation before using predictions for real
+    maintenance decisions.
+    """
+)
+
+
+# ---------------------------------------------------------
+# FOOTER
+# ---------------------------------------------------------
+st.markdown("---")
+
+st.caption(
+    "AquaGrid AI Platform • SCADA Anomaly Detection MVP • "
+    "Streamlit + Python + scikit-learn"
+)
